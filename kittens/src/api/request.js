@@ -7,6 +7,7 @@ console.log(hostUrl);
 
 export const request = (method, endPoint, reqBody = null) => {
   console.log(method);
+  console.log("hostUrl", hostUrl);
   const requestPromise = (httpMethod) => {
     return axios.request({
       url: hostUrl + endPoint,
