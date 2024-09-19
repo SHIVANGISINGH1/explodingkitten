@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/joho/godotenv"
@@ -27,19 +27,43 @@ func setupRedis() *redis.Client {
 	return rdb
 }
 
-// Create a new user
-func createUser(c *gin.Context) {
+// Exported function for Vercel
+func Handler(w http.ResponseWriter, r *http.Request) {
 	rdb := setupRedis()
+
+	// Route handling
+	switch r.Method {
+	case http.MethodPost:
+		if r.URL.Path == "/createUser" {
+			createUser(w, r, rdb)
+		}
+	case http.MethodGet:
+		if r.URL.Path == "/getUser" {
+			username := r.URL.Query().Get("username")
+			getUser(w, r, username, rdb)
+		} else if r.URL.Path == "/fetchUsers" {
+			fetchUsers(w, r, rdb)
+		}
+	case http.MethodPut:
+		if r.URL.Path == "/updateUser" {
+			updateUser(w, r, rdb)
+		}
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// Create a new user
+func createUser(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	var reqBody map[string]interface{}
-	log.Printf("name is", reqBody)
-	if err := c.BindJSON(&reqBody); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	username, exists := reqBody["username"].(string)
 	if !exists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+		http.Error(w, "Username is required", http.StatusBadRequest)
 		return
 	}
 
@@ -49,42 +73,40 @@ func createUser(c *gin.Context) {
 		newUserData := fmt.Sprintf(`{"username": "%s", "matchesWon": 0}`, username)
 		err = rdb.Set(ctx, username, newUserData, 0).Err()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "User created successfully", "user": newUserData})
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"message": "User created successfully", "user": %s}`, newUserData)
 	} else if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		// User already exists
-		c.JSON(http.StatusOK, gin.H{"message": "User already exists", "user": userData})
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"message": "User already exists", "user": %s}`, userData)
 	}
 }
 
 // Get user details
-func getUser(c *gin.Context) {
-	rdb := setupRedis()
-	username := c.Param("username")
-
+func getUser(w http.ResponseWriter, r *http.Request, username string, rdb *redis.Client) {
 	userData, err := rdb.Get(ctx, username).Result()
 	if err == redis.Nil {
-		c.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User details", "user": userData})
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"message": "User details", "user": %s}`, userData)
 }
 
 // Update user data
-func updateUser(c *gin.Context) {
-	rdb := setupRedis()
+func updateUser(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	var reqBody map[string]string
-
-	if err := c.BindJSON(&reqBody); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -92,13 +114,13 @@ func updateUser(c *gin.Context) {
 	matchesWonStr, matchesWonExists := reqBody["matchesWon"]
 
 	if !usernameExists || !matchesWonExists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username and matchesWon are required"})
+		http.Error(w, "Username and matchesWon are required", http.StatusBadRequest)
 		return
 	}
 
 	matchesWon, err := strconv.Atoi(matchesWonStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid matchesWon value"})
+		http.Error(w, "Invalid matchesWon value", http.StatusBadRequest)
 		return
 	}
 
@@ -106,19 +128,19 @@ func updateUser(c *gin.Context) {
 	newUserData := fmt.Sprintf(`{"username": "%s", "matchesWon": %d}`, username, matchesWon)
 	err = rdb.Set(ctx, username, newUserData, 0).Err()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"message": "User updated successfully"}`)
 }
 
 // Fetch all users
-func fetchUsers(c *gin.Context) {
-	rdb := setupRedis()
+func fetchUsers(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	keys, err := rdb.Keys(ctx, "*").Result()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -144,7 +166,8 @@ func fetchUsers(c *gin.Context) {
 		return users[i]["username"] < users[j]["username"]
 	})
 
-	c.JSON(http.StatusOK, gin.H{"message": "List of all users", "data": users})
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(gin.H{"message": "List of all users", "data": users})
 }
 
 // Main function
@@ -154,18 +177,11 @@ func main() {
 		log.Fatalf("Error loading .env file")
 	}
 
-	r := gin.Default()
-	r.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
-		AllowHeaders: []string{"Origin", "Content-Type", "Accept"},
-	}))
-
-	r.POST("/createUser", createUser)
-	r.GET("/getUser/:username", getUser)
-	r.PUT("/updateUser", updateUser)
-	r.GET("/fetchUsers", fetchUsers)
-
-	// Run the server on port 3000 (Vercel uses this port)
-	r.Run(":3000")
+	// Set up HTTP server
+	http.HandleFunc("/", Handler)
+	log.Println("Starting server on :3000...")
+	err = http.ListenAndServe(":3000", nil) // Change to 8080 for local testing
+	if err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }
