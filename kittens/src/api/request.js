@@ -2,7 +2,7 @@ import { handleError } from "./handleError";
 import axios from "axios";
 
 import { GET, POST, PUT } from "./httpConstants";
-let hostUrl = process.env.REACT_APP_USER_API;
+let hostUrl = process.env.REACT_APP_USER_API || "http://localhost:8000";
 console.log(hostUrl);
 
 export const request = (method, endPoint, reqBody = null) => {

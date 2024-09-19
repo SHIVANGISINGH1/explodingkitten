@@ -30,7 +30,7 @@ const GameLobby = (props) => {
     });
     console.log("ff", response);
     if (response.status == 200) {
-      setItem("user", JSON.parse(response.data.user));
+      setItem("user", response.data.user);
       setIsLobby(false);
       button.value = "START GAME";
       history("/playGame");
