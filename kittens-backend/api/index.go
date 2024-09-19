@@ -29,6 +29,15 @@ func setupRedis() *redis.Client {
 
 // Exported function for Vercel
 func Handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Adjust this for production
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept")
+
+	// Handle OPTIONS request for CORS preflight
+	if r.Method == http.MethodOptions {
+		return
+	}
+
 	rdb := setupRedis()
 
 	// Route handling
