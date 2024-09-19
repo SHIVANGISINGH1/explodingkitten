@@ -7,10 +7,10 @@ console.log(hostUrl);
 
 export const request = (method, endPoint, reqBody = null) => {
   console.log(method);
-  console.log("hostUrl", hostUrl);
+  console.log("hostUrl", hostUrl + endPoint);
   const requestPromise = (httpMethod) => {
     return axios.request({
-      url: endPoint,
+      url: hostUrl + endPoint,
       method: httpMethod,
       mode: "cors",
       headers: {
